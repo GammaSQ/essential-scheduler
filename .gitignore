@@ -1,2 +1,12 @@
+<<<<<<< HEAD
 venv*
 __pycache__*
+=======
+*.swp
+*~
+*.pyc
+/project_sample/project_sample.db
+/docs/_build/
+django_scheduler.egg-info
+.coverage
+>>>>>>> 83706182c8f65960d833999053d214ae45ffaec3

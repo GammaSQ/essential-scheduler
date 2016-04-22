@@ -24,7 +24,6 @@ class NewYork(datetime.tzinfo):
     def localize(self, dt):
         return dt.replace(tzinfo=self)
 
-
 class TestPeriod(TestCase):
 
     def setUp(self):
@@ -260,7 +259,6 @@ class TestDay(TestCase):
         self.assertEqual( test_day.start, expected_start)
         self.assertEqual( test_day.end, expected_end)
 
-
 class TestTzInfoPersistence(TestCase):
     def setUp(self):
         self.timezone = NewYork()
@@ -293,7 +291,6 @@ class TestTzInfoPersistence(TestCase):
         self.assertEqual(self.week.tzinfo, self.timezone)
         self.assertEqual(self.month.tzinfo, self.timezone)
         self.assertEqual(self.year.tzinfo, self.timezone)
-
 
 class TestAwareDay(TestCase):
     def setUp(self):
