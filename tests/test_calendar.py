@@ -1,3 +1,4 @@
+
 import datetime
 
 from django.test import TestCase
@@ -18,6 +19,7 @@ class TestCalendar(TestCase):
         calendar = Calendar()
         self.assertEqual(list(calendar.occurrences_after(datetime.datetime.min)), [])
 
+
     def test_occurrences_after_with_events_after_returns_events(self):
         calendar = Calendar()
         calendar.save()
@@ -31,16 +33,6 @@ class TestCalendar(TestCase):
         self.assertEqual(occurrences[0].end, end_after)
 
 
-    def test_occurrences_after_with_events_before_returns_empty(self):
-        calendar = Calendar()
-        calendar.save()
-        start_after = timezone.now() + datetime.timedelta(days=-1)
-        end_after = start_after + datetime.timedelta(hours=1)
-        event = self.__create_event(start_after, end_after)
-        calendar.events.add(event)
-        occurrences = list(calendar.occurrences_after(timezone.now()))
-        self.assertEqual(occurrences, [])
-
     def test_get_calendar_for_object(self):
         calendar = Calendar(name='My Cal')
         calendar.save()
@@ -50,7 +42,7 @@ class TestCalendar(TestCase):
         result = Calendar.objects.get_calendar_for_object(rule)
         self.assertEqual(result.name, 'My Cal')
 
-    def test_get_calendar_for_object_without_calenget_calendar_for_objectdars(self):
+    def test_get_calendar_for_object_without_calendars(self):
         with self.assertRaises(Calendar.DoesNotExist):
             rule = Rule()
             rule.save()

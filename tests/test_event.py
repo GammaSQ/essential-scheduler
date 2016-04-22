@@ -10,6 +10,7 @@ from scheduler.models import Event, Rule, Calendar, EventRelation, TestSubEvent
 from scheduler.models.occurrences import TestInheritOccurrence
 from scheduler.models.events import BaseEvent
 
+
 class TestEvent(TestCase):
 
     def setUp(self):
@@ -25,6 +26,7 @@ class TestEvent(TestCase):
 
     def __create_recurring_event(self, start, end, end_recurring, rule, cal):
         return Event(**{
+
                 'start': start,
                 'end': end,
                 'end_recurring_period': end_recurring,
@@ -45,18 +47,21 @@ class TestEvent(TestCase):
         data_2 = {
             'start': datetime.datetime(2013, 1, 5, 9, 0, tzinfo=timezone.utc),
             'end': datetime.datetime(2013, 1, 5, 12, 0, tzinfo=timezone.utc),
+
             'calendar': cal
         }
         event_one = Event(**data_1)
         event_two = Event(**data_2)
         event_one.save()
         event_two.save()
+
         occurrences_two = event_two.get_occurrences(datetime.datetime(2013, 1, 5, 9, 0, tzinfo=timezone.utc),
                                                     datetime.datetime(2013, 1, 5, 12, 0, tzinfo=timezone.utc))
         self.assertEqual(1, len(occurrences_two))
 
         occurrences_one = event_one.get_occurrences(datetime.datetime(2013, 1, 5, 9, 0, tzinfo=timezone.utc),
                                                     datetime.datetime(2013, 1, 5, 12, 0, tzinfo=timezone.utc))
+
         self.assertEqual(0, len(occurrences_one))
 
     def test_recurring_event_get_occurrences(self):
@@ -67,18 +72,23 @@ class TestEvent(TestCase):
         rule.save()
 
         recurring_event = self.__create_recurring_event(
+
                     datetime.datetime(2008, 1, 5, 8, 0, tzinfo=timezone.utc),
                     datetime.datetime(2008, 1, 5, 9, 0, tzinfo=timezone.utc),
                     datetime.datetime(2008, 5, 5, 0, 0, tzinfo=timezone.utc),
+
                     rule,
                     cal,
                     )
         recurring_event.save()
+
         occurrences = recurring_event.get_occurrences(start=datetime.datetime(2008, 1, 12, 0, 0, tzinfo=timezone.utc),
                                                       end=datetime.datetime(2008, 1, 20, 0, 0, tzinfo=timezone.utc))
+
         self.assertEqual(["%s to %s" % (o.start, o.end) for o in occurrences],
                           ['2008-01-12 08:00:00+00:00 to 2008-01-12 09:00:00+00:00',
                            '2008-01-19 08:00:00+00:00 to 2008-01-19 09:00:00+00:00'])
+
 
     def test_recurring_event_get_occurrences_2(self):
         cal = Calendar(name="MyCal")
@@ -109,13 +119,16 @@ class TestEvent(TestCase):
         rule.save()
 
         self.__create_recurring_event(
+
                     datetime.datetime(2008, 1, 5, 8, 0, tzinfo=timezone.utc),
                     datetime.datetime(2008, 1, 5, 9, 0, tzinfo=timezone.utc),
                     datetime.datetime(2008, 5, 5, 0, 0, tzinfo=timezone.utc),
+
                     rule,
                     cal,
                     )
         event_one = self.__create_event(
+
                 datetime.datetime(2013, 1, 5, 8, 0, tzinfo=timezone.utc),
                 datetime.datetime(2013, 1, 5, 9, 0, tzinfo=timezone.utc),
                 cal
@@ -123,17 +136,21 @@ class TestEvent(TestCase):
         event_two = self.__create_event(
                 datetime.datetime(2013, 1, 5, 9, 0, tzinfo=timezone.utc),
                 datetime.datetime(2013, 1, 5, 12, 0, tzinfo=timezone.utc),
+
                 cal
         )
         event_one.save()
         event_two.save()
         occurrences_two = event_two.get_occurrences(
+
                                     datetime.datetime(2013, 1, 5, 9, 0, tzinfo=timezone.utc),
                                     datetime.datetime(2013, 1, 5, 12, 0, tzinfo=timezone.utc))
+
 
         self.assertEqual(1, len(occurrences_two))
 
         occurrences_one = event_one.get_occurrences(
+
                                     datetime.datetime(2013, 1, 5, 9, 0, tzinfo=timezone.utc),
                                     datetime.datetime(2013, 1, 5, 12, 0, tzinfo=timezone.utc))
 
@@ -162,14 +179,17 @@ class TestEvent(TestCase):
 
     def test_recurring_event_get_occurrences_after_with_moved_occ(self):
 
+
         cal = Calendar(name="MyCal")
         cal.save()
         rule = Rule(frequency="WEEKLY")
         rule.save()
         recurring_event= self.__create_recurring_event(
+
                     datetime.datetime(2008, 1, 5, 2, 0, tzinfo=timezone.utc),
                     datetime.datetime(2008, 1, 5, 3, 0, tzinfo=timezone.utc),
                     datetime.datetime(2008, 5, 5, 0, 0, tzinfo=timezone.utc),
+
                     rule,
                     cal,
                     )
@@ -185,6 +205,7 @@ class TestEvent(TestCase):
         self.assertEqual(datetime.datetime(2008, 1, 15, 8, 0, tzinfo=timezone.utc), occurrence2.start)
 
     def test_recurring_event_get_occurrence(self):
+
         cal = Calendar(name="MyCal")
         cal.save()
         rule = Rule(frequency="WEEKLY")

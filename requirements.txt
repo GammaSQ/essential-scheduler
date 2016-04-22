@@ -1,3 +1,8 @@
+<<<<<<< HEAD
 Django==1.9.5
 python-dateutil==2.5.3
 six==1.10.0
+=======
+coverage>=3.7.1
+coveralls>=0.5
+>>>>>>> 83706182c8f65960d833999053d214ae45ffaec3
