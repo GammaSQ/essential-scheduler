@@ -19,7 +19,8 @@ from scheduler.models.calendars import Calendar
 
 class EventListQuerySet(SubclassingQuerySet):
     def occurrences_after(self, after=None, tzinfo=timezone.utc):
-        if not hasattr(BaseEvent, 'occurrence_subclasses'):
+        #trying lazy import!
+        if not len(BaseEvent.occurrence_subclasses.keys()) > 0:
             from scheduler.models.occurrences import OccurrenceSubclasses
             BaseEvent.occurrence_subclasses = OccurrenceSubclasses
         OccurrenceSubclasses = BaseEvent.occurrence_subclasses
@@ -64,6 +65,8 @@ class EventManager(models.Manager):
 class BaseEvent(with_metaclass(models.base.ModelBase, *get_model_bases())):
     content_type = models.ForeignKey(ContentType,editable=False,null=True)
     objects = EventManager()
+
+    occurrence_subclasses = {}
 
     class Meta():
         abstract=True
@@ -162,9 +165,9 @@ class Event(BaseEvent):
         return occurrences
 
     def _create_occurrence(self, start, end=None):
-        if not hasattr(BaseEvent, 'occurrence_subclasses'):
+        if not type(self).__name__ in BaseEvent.occurrence_subclasses:
             from scheduler.models.occurrences import OccurrenceSubclasses
-            BaseEvent.occurrence_subclasses = OccurrenceSubclasses
+            BaseEvent.occurrence_subclasses[type(self).__name__] = OccurrenceSubclasses[type(self).__name__]
         Occurrence = BaseEvent.occurrence_subclasses[type(self).__name__]
         if end is None:
             end = start + self.duration
