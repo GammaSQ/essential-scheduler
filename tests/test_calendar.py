@@ -21,7 +21,7 @@ class TestCalendar(TestCase):
 
 
     def test_occurrences_after_with_events_after_returns_events(self):
-        calendar = Calendar()
+        calendar = Calendar(name="DEBUG")
         calendar.save()
         start_after = timezone.now() + datetime.timedelta(days=1)
         end_after = start_after + datetime.timedelta(hours=1)

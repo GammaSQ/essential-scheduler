@@ -6,35 +6,27 @@ from django.utils.six import with_metaclass
 import heapq
 from dateutil import rrule
 from django.db import models
-from django.conf import settings
 from django.utils import timezone
-from django.utils.encoding import python_2_unicode_compatible
+from django.utils.encoding import python_2_unicode_compatible 
 from django.utils.formats import date_format
 from django.contrib.contenttypes import fields
 from django.contrib.contenttypes.models import ContentType
 
+from scheduler.settings import settings
 from scheduler.models.utils import OccurrenceReplacer, get_model_bases, SubclassingQuerySet
 from scheduler.models.rules import Rule
 from scheduler.models.calendars import Calendar
 
 class EventListQuerySet(SubclassingQuerySet):
     def occurrences_after(self, after=None, tzinfo=timezone.utc):
-        #trying lazy import!
-        if not len(BaseEvent.occurrence_subclasses.keys()) > 0:
-            from scheduler.models.occurrences import OccurrenceSubclasses
-            BaseEvent.occurrence_subclasses = OccurrenceSubclasses
-        OccurrenceSubclasses = BaseEvent.occurrence_subclasses
         if after is None:
             after = timezone.now()
-        events = self.all() #only makes sence if used by EVENT!
-        def occs():
-            for cls in OccurrenceSubclasses.values():
-                for occ in cls.objects.filter(event__in=events):
-                    yield occ
-        query = OccurrenceSubclasses['Event'].objects.filter(event__in=events)
-        occ_replacer = OccurrenceReplacer(occs())
-        generators = [event._occurrences_after_generator(after) for event in events]
-
+        #NEED TO FILTER FOR SORCE-EVENT!
+        group_events = self.model.objects.filter(rule__in=self.values_list('rule', flat=True).distinct(), cancelled=None, original_start=None, original_end=None)
+        occ_replacer = OccurrenceReplacer(self.exclude(cancelled=None, original_start=None, original_end=None))
+        generators = [event_group._occurrences_after_generator(after) for event_group in group_events]
+        #Taking care of rule=None events.
+        generators += [event._occurrences_after_generator(after) for event in self.filter(rule=None)]
         occurrences = []
         for generator in generators:
             try:
@@ -46,6 +38,8 @@ class EventListQuerySet(SubclassingQuerySet):
             if len(occurrences) == 0:
                 raise StopIteration
 
+            #HERE we could sort occurrences[x][0]. Is that necessarry / a good idea?
+
             generator = occurrences[0][1]
 
             try:
@@ -56,14 +50,21 @@ class EventListQuerySet(SubclassingQuerySet):
 
 
 class EventManager(models.Manager):
+
     def get_queryset(self):
         return EventListQuerySet(self.model)
+
+    def event_group(self, source=None):
+        return self.exclude(cancelled=None)
+
+    def source_events(self):
+        return self.filter(cancelled=None)
 
     def get_for_object(self, content_object, distinction=None):
         return EventRelation.objects.get_events_for_object(content_object, distinction, self)
 
 class BaseEvent(with_metaclass(models.base.ModelBase, *get_model_bases())):
-    content_type = models.ForeignKey(ContentType,editable=False,null=True)
+    content_type = models.ForeignKey(ContentType, editable=False, null=True)
     objects = EventManager()
 
     occurrence_subclasses = {}
@@ -89,25 +90,60 @@ class BaseEvent(with_metaclass(models.base.ModelBase, *get_model_bases())):
 #EventRelation NEEDS ForeignKey FROM NON-ABSTRACT CLASS!!!
 @python_2_unicode_compatible
 class Event(BaseEvent):
+    original_start = models.DateTimeField(blank=True, null=True, editable=False)
+    original_end = models.DateTimeField(blank=True, null=True, editable=False)
     start = models.DateTimeField()
     end = models.DateTimeField(help_text="The end time must be later than the start time.")
+    cancelled = models.BooleanField(null=True, blank=True, default=False)
+
     rule = models.ForeignKey(Rule, null=True, blank=True)
-    end_recurring_period = models.DateTimeField(null=True, blank=True)
-    
+
     calendar = models.ForeignKey(Calendar, null=True, blank=True)
 
-    #TRACKING ... NECESSARY?
-    creator = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, related_name='creator')
-    created_on = models.DateTimeField(auto_now_add=True)
-    updated_on = models.DateTimeField(auto_now=True)
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault('cancelled', False)
+        if 'rule' in kwargs and not kwargs.get('cancelled', False) == None:
+            defaults = dict([
+                    (fld.name, kwargs[fld.name])
+                    for fld in self._meta.get_fields()
+                    if fld.name in kwargs
+                    and not fld.auto_created and not fld.is_relation
+                    and fld.name not in ['original_start', 'original_end', 'cancelled']
+                ])
+            obj, created = type(self).objects.get_or_create(rule=kwargs['rule'], cancelled=None,
+                defaults=defaults)
+            if created:
+                obj.save()
+                kwargs.setdefault('original_start', kwargs['start'])
+                kwargs.setdefault('original_end'  , kwargs['end']  )
 
+            self.group_source = obj
+        else:
+            self.group_source = self
+
+        super(Event, self).__init__(*args, **kwargs)
+        if self.rule:
+            self.event_group = type(self).objects.filter(rule=self.rule).exclude(cancelled=None)
+        else:
+            self.event_group = type(self).objects.filter(pk = self.pk)
 
     class Meta():
         abstract=False
 
     def __str__(self):
         #date_format default format is 'DATE_FORMAT'
-        return '%i: %s - %s' %( self.id, date_format(self.start), date_format(self.end))
+        return '%s - %s%s' %(date_format(self.start), date_format(self.end), ", GROUP_SOURCE" if self.cancelled == None else "")
+
+    def __lt__(self, other):
+        return self.end < other.end
+
+    def __gt__(self, other):
+        return self.start > other.start
+
+    #Need this WHAT FOR exactly?
+    def __eq__(self, other):
+        #Check weather same timeslot is occupied!
+        return isinstance(other, Event) and self.start == other.start and self.end == other.end
 
     @property
     def duration(self):
@@ -125,8 +161,22 @@ class Event(BaseEvent):
     def hours(self):
         return float(self.seconds) / 3600
 
+    def move(self, new_start, new_end = None):
+        #THIS IS NO YET WORKING!!!
+        if False and type(new_start) == datetime.timedelta:
+            new_end = self.end + new_start
+            new_start = self.start + new_start
+        self.end = new_end or new_start + (self.end - self.start)
+        self.start = new_start
+        self.save()
+
+    def _clone_model(self):
+        new_kwargs = dict([(fld.name, getattr(self, fld.name)) for fld in self._meta.fields if fld.name != 'id'])
+        return self.__class__(**new_kwargs)
+
     def get_occurrences(self, start, end):
-        persisted_occurrences = self.occurrence_set.all()
+        import datetime
+        persisted_occurrences = self.event_group.filter(end__gte=start, start__lte=end)
         occ_replacer = OccurrenceReplacer(persisted_occurrences)
 
         occurrences = self._get_occurrence_list(start, end)
@@ -151,8 +201,8 @@ class Event(BaseEvent):
                 return []
 
         occurrences = []
-        if self.end_recurring_period and self.end_recurring_period < end:
-            end = self.end_recurring_period
+        if self.rule.end_recurring_period and self.rule.end_recurring_period < end:
+            end = self.rule.end_recurring_period
         rule = self.get_rrule_object()
         occ_starts = rule.between(start-self.duration, end, inc=True)
 
@@ -165,13 +215,13 @@ class Event(BaseEvent):
         return occurrences
 
     def _create_occurrence(self, start, end=None):
-        if not type(self).__name__ in BaseEvent.occurrence_subclasses:
-            from scheduler.models.occurrences import OccurrenceSubclasses
-            BaseEvent.occurrence_subclasses[type(self).__name__] = OccurrenceSubclasses[type(self).__name__]
-        Occurrence = BaseEvent.occurrence_subclasses[type(self).__name__]
         if end is None:
             end = start + self.duration
-        return Occurrence(event=self, start=start, end=end)
+        ret = self.group_source._clone_model()
+
+        ret.original_start = ret.start = start
+        ret.original_end   = ret.end   = end
+        return ret
 
     def get_rrule_object(self):
         if self.rule is None:
@@ -192,9 +242,11 @@ class Event(BaseEvent):
             after = timezone.now()
         if settings.HIDE_NAIVE_AWARE_TYPE_ERROR and timezone.is_naive(after) and settings.USE_TZ:
             after = timezone.make_aware(after, timezone.utc)
-        occ_replacer = OccurrenceReplacer(self.occurrence_set.all())
+        occ_replacer = OccurrenceReplacer(self.event_group.all())
+
         generator = self._occurrences_after_generator(after)
-        trickies = list(self.occurrence_set.filter(original_start__lte = after, start__gte=after).order_by('start'))
+
+        trickies = list(self.event_group.filter(original_start__lte = after, start__gte=after).order_by('start'))
 
         while True:
             try:
@@ -224,24 +276,11 @@ class Event(BaseEvent):
             date_iter = iter(rule)
             while True:
                 start = next(date_iter)
-                if self.end_recurring_period and start > self.end_recurring_period:
+                if self.rule.end_recurring_period and start > self.rule.end_recurring_period:
                     raise StopIteration
                 end = start + self.duration
                 if end > after:
                     yield self._create_occurrence(start, end)
-
-if getattr(settings, 'debug', True):
-    class FirstSub(Event):
-        pass
-
-    class SecondSub(Event):
-        pass
-
-    class ThirdSub(Event):
-        pass
-
-    class TestSubEvent(ThirdSub):
-        title = models.CharField(max_length=255)
 
 class EventRelationManager(models.Manager):
     def get_events_for_object(self, content_object, distinction=None, queryset=Event.objects, inherit=True):

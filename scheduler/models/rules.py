@@ -20,6 +20,8 @@ class Rule(with_metaclass(models.base.ModelBase, *get_model_bases())):
     name=models.CharField(max_length=32)
     description = models.TextField()
     frequency = models.CharField(choices=freqs, max_length=10)
+    start_recurring_period = models.DateTimeField(null=True, blank=True)
+    end_recurring_period = models.DateTimeField(null=True, blank=True)
     params = models.TextField(null=True, blank=True)
 
     def rrule_frequency(self):
@@ -32,6 +34,9 @@ class Rule(with_metaclass(models.base.ModelBase, *get_model_bases())):
 
         }
         return compatibility_dict[self.frequency]
+
+    def create(self, *args, **kwargs):
+        return super(Rule, self).create(self, *args, **kwargs)
 
     def get_params(self):
         if self.params is None:

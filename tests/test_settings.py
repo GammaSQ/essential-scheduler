@@ -10,10 +10,12 @@ USE_I18N = True
 
 USE_L10N = True
 
+debug = True
 
 SECRET_KEY = "_nc9_+ntllx!ptq5tzh96nn^$a#81#auhrdw#8t#+n0#4ig(lz"
 
 INSTALLED_APPS = (
+    'tests',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
@@ -21,8 +23,7 @@ INSTALLED_APPS = (
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.humanize',
-    'scheduler',
-    'tests'
+    'scheduler'
 )
 
 MIDDLEWARE_CLASSES = [

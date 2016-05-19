@@ -3,13 +3,12 @@ from django.utils.six.moves.builtins import range
 # -*- coding: utf-8 -*-
 
 import datetime
-from django.conf import settings
+from scheduler.settings import settings
+from scheduler.models import Event
 from django.utils import timezone
 from django.utils.dates import WEEKDAYS, WEEKDAYS_ABBR
 from django.utils.formats import date_format
 from django.utils.encoding import python_2_unicode_compatible
-
-from scheduler.models.occurrences import Occurrence
 
 weekday_names = []
 weekday_abbrs = []
@@ -44,10 +43,10 @@ class Period(object):
         self.utc_start = self._normalize_timezone_to_utc(start, tzinfo)
         self.utc_end = self._normalize_timezone_to_utc(end, tzinfo)
         self.events = events
+        self.rules = [event.rule.pk for event in events if event.rule]
         self.tzinfo = self._get_tzinfo(tzinfo)
         self.occurrence_pool = occurrence_pool
-        if persisted_occurrences is not None:
-            self._persisted_occurrences = persisted_occurrences
+        self._persisted_occurrences = persisted_occurrences
 
     def _normalize_timezone_to_utc(self, point_in_time, tzinfo):
         if not hasattr(point_in_time, 'tzinfo'):
@@ -84,7 +83,7 @@ class Period(object):
         pool = getattr(self, "occurrence_pool", None)
         if pool is not None:
             for occurrence in pool:
-                if occurrence.start <= self.utc_end and occurrence.end >= self.utc_start:
+                if occurrence.rule.pk in self.rules and occurrence.start <= self.utc_end and occurrence.end >= self.utc_start:
                     occurrences.append(occurrence)
         else:
             # We only save DATETIME!
@@ -95,7 +94,12 @@ class Period(object):
                 start = self.start
                 end = self.end
             
+            sources = []
             for event in self.events:
+                if event.group_source in sources:
+                    continue
+                else:
+                    sources.append(event.group_source)
                 event_occurrences = event.get_occurrences(start, end)
                 occurrences += event_occurrences
 
@@ -109,8 +113,8 @@ class Period(object):
         return self._occurrences
 
     def get_persisted_occurrences(self):
-        if not hasattr(self, '_persisted_occurrences'):
-            self._persisted_occurrences = Occurrence.objects.filter(event__in=self.events)
+        if not getattr(self, '_persisted_occurrences', None):
+            self._persisted_occurrences = Event.objects.filter(rule__in=self.rules)
         return self._persisted_occurrences
 
     @property

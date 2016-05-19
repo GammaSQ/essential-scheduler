@@ -1,7 +1,6 @@
-from django.conf import settings
 from django.db import models
 from django.utils.module_loading import import_string
-
+from scheduler.settings import settings
 
 #The following three classes allow:
 # * All Event Subclasses to share the EventManager (abstract classes pass on Managers!)
@@ -13,17 +12,23 @@ from django.utils.module_loading import import_string
 class SubclassingQuerySet(models.QuerySet):
     def __getitem__(self, k):
         result = super(SubclassingQuerySet, self).__getitem__(k)
-        if isinstance(result, BaseEvent) :
+        if hasattr(result, 'as_leaf_class') :
             return result.as_leaf_class()
         else :
             return result
 
     def __iter__(self):
         for item in super(SubclassingQuerySet, self).__iter__():
-            yield item.as_leaf_class()
+            if hasattr(item, 'as_leaf_class'):
+                yield item.as_leaf_class()
+            else:
+                yield item
+
+#    def get(self, *args, **kwargs):
+#        return super(SubclassingQuerySet, self).get(*args, **kwargs).as_leaf_class()
 
 def get_model_bases():
-    baseStrings = getattr(settings, 'SCHEDULER_BASE_CLASSES', None)
+    baseStrings = settings['SCHEDULER_BASE_CLASSES']
     if baseStrings is None:
         return [models.Model]
     else:
@@ -32,15 +37,15 @@ def get_model_bases():
 class OccurrenceReplacer(object):
 
     def __init__(self, persisted_occurrences):
-        lookup = [((occ.event, occ.original_start, occ.original_end), occ) for occ in persisted_occurrences]
+        lookup = [((occ.rule, occ.original_start, occ.original_end), occ) for occ in persisted_occurrences]
         self.lookup = dict(lookup)
 
     def get_occurrence(self, occ):
-        return self.lookup.pop((occ.event, occ.original_start, occ.original_end), occ)
+        return self.lookup.pop((occ.rule, occ.original_start, occ.original_end), occ)
 
     def has_occurrence(self, occ):
         try:
-            return (occ.event, occ.original_start, occ.original_end) in self.lookup
+            return (occ.rule, occ.original_start, occ.original_end) in self.lookup
         except TypeError:
             if not self.lookup:
                 return False

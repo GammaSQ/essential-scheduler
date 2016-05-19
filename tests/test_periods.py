@@ -27,20 +27,19 @@ class NewYork(datetime.tzinfo):
 class TestPeriod(TestCase):
 
     def setUp(self):
-        rule = Rule(frequency = "WEEKLY")
+        rule = Rule(frequency = "WEEKLY", end_recurring_period=datetime.datetime(2008, 5, 5, 0, 0, tzinfo=timezone.utc))
         rule.save()
         cal = Calendar(name="MyCal")
         cal.save()
         data = {
                 'start': datetime.datetime(2008, 1, 5, 8, 0, tzinfo=timezone.utc),
                 'end': datetime.datetime(2008, 1, 5, 9, 0, tzinfo=timezone.utc),
-                'end_recurring_period' : datetime.datetime(2008, 5, 5, 0, 0, tzinfo=timezone.utc),
                 'rule': rule,
                 'calendar': cal
                }
         recurring_event = Event(**data)
         recurring_event.save()
-        self.period = Period(events=Event.objects.all(),
+        self.period = Period(events=Event.objects.source_events(),
                             start = datetime.datetime(2008, 1, 4, 7, 0, tzinfo=timezone.utc),
                             end = datetime.datetime(2008, 1, 21, 7, 0, tzinfo=timezone.utc))
 
@@ -76,6 +75,16 @@ class TestPeriod(TestCase):
                                           datetime.datetime(2008, 1, 4, 7, 12, tzinfo=timezone.utc) )
         self.failIf( slot.has_occurrences )
 
+    def test_persisted_occurrence_w_wrong_group(self):
+        occ = self.period.events[0].get_occurrences(
+            start = datetime.datetime(2008, 1, 4, 7, 0, tzinfo=timezone.utc),
+            end = datetime.datetime(2008, 1, 21, 7, 0, tzinfo=timezone.utc) 
+        )
+        occ[0].rule = Rule(frequency="YEARLY")
+        self.period.occurrence_pool = occ
+        occurrences = self.period.occurrences
+        self.assertEqual(len(occurrences), 2)
+
 class TestYear(TestCase):
 
     def setUp(self):
@@ -89,20 +98,19 @@ class TestYear(TestCase):
 class TestMonth(TestCase):
 
     def setUp(self):
-        rule = Rule(frequency = "WEEKLY")
+        rule = Rule(frequency = "WEEKLY", end_recurring_period=datetime.datetime(2008, 5, 5, 0, 0, tzinfo=timezone.utc))
         rule.save()
         cal = Calendar(name="MyCal")
         cal.save()
         data = {
                 'start': datetime.datetime(2008, 1, 5, 8, 0, tzinfo=timezone.utc),
                 'end': datetime.datetime(2008, 1, 5, 9, 0, tzinfo=timezone.utc),
-                'end_recurring_period' : datetime.datetime(2008, 5, 5, 0, 0, tzinfo=timezone.utc),
                 'rule': rule,
                 'calendar': cal
                }
         recurring_event = Event(**data)
         recurring_event.save()
-        self.month = Month(events=Event.objects.all(),
+        self.month = Month(events=Event.objects.source_events(),
                            date=datetime.datetime(2008, 2, 7, 9, 0, tzinfo=timezone.utc))
 
     def pest_get_weeks(self):
@@ -318,7 +326,7 @@ class TestAwareDay(TestCase):
         self.assertEqual(end, self.day.end)
 
     def test_occurence(self):
-        self.assertEqual(self.event in [o.event for o in self.day.occurrences], True)
+        self.assertTrue(self.event in self.day.occurrences)
 
 
 class TestAwareWeek(TestCase):
@@ -377,14 +385,13 @@ class TestAwareYear(TestCase):
 class TestOccurrencePool(TestCase):
 
     def setUp(self):
-        rule = Rule(frequency = "WEEKLY")
+        rule = Rule(frequency = "WEEKLY", end_recurring_period=datetime.datetime(2008, 5, 5, 0, 0, tzinfo=timezone.utc))
         rule.save()
         cal = Calendar(name="MyCal")
         cal.save()
         data = {
                 'start': datetime.datetime(2008, 1, 5, 8, 0, tzinfo=timezone.utc),
                 'end': datetime.datetime(2008, 1, 5, 9, 0, tzinfo=timezone.utc),
-                'end_recurring_period' : datetime.datetime(2008, 5, 5, 0, 0, tzinfo=timezone.utc),
                 'rule': rule,
                 'calendar': cal
                }
