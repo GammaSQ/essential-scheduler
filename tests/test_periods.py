@@ -36,9 +36,16 @@ class TestPeriod(TestCase):
                 'end': datetime.datetime(2008, 1, 5, 9, 0, tzinfo=timezone.utc),
                 'rule': rule,
                 'calendar': cal
-               }
+        }
+        data2 = {
+                'start': datetime.datetime(2008, 1, 5, 8, 0, tzinfo=timezone.utc),
+                'end': datetime.datetime(2008, 1, 5, 9, 0, tzinfo=timezone.utc),
+                'calendar': cal
+        }
         recurring_event = Event(**data)
         recurring_event.save()
+        singular_event = Event(**data2)
+        singular_event.save()
         self.period = Period(events=Event.objects.source_events(),
                             start = datetime.datetime(2008, 1, 4, 7, 0, tzinfo=timezone.utc),
                             end = datetime.datetime(2008, 1, 21, 7, 0, tzinfo=timezone.utc))
@@ -75,15 +82,26 @@ class TestPeriod(TestCase):
                                           datetime.datetime(2008, 1, 4, 7, 12, tzinfo=timezone.utc) )
         self.failIf( slot.has_occurrences )
 
-    def test_persisted_occurrence_w_wrong_group(self):
+    def test_occurrence_pool_w_wrong_group(self):
         occ = self.period.events[0].get_occurrences(
             start = datetime.datetime(2008, 1, 4, 7, 0, tzinfo=timezone.utc),
             end = datetime.datetime(2008, 1, 21, 7, 0, tzinfo=timezone.utc) 
         )
         occ[0].rule = Rule(frequency="YEARLY")
+        occ.append(self.period.events[1].get_occurrence(datetime.datetime(2008, 1, 4, 7, 0, tzinfo=timezone.utc)))
         self.period.occurrence_pool = occ
         occurrences = self.period.occurrences
-        self.assertEqual(len(occurrences), 2)
+        self.assertEqual(len(occurrences), 3)
+
+    def test_get_persisted_occurrences(self):
+        self.period.events[0].get_occurrences(
+            start = datetime.datetime(2008, 1, 4, 7, 0, tzinfo=timezone.utc),
+            end = datetime.datetime(2008, 1, 21, 7, 0, tzinfo=timezone.utc) 
+        )[0].move(datetime.datetime(2008, 1, 19, 8, 0, tzinfo=timezone.utc),
+                 datetime.datetime(2008, 1, 19, 9, 0, tzinfo=timezone.utc))
+        persisted = self.period.get_persisted_occurrences()
+        self.assertEqual(len(persisted), 2)
+        self.assertTrue(self.period.events[1] in persisted)
 
 class TestYear(TestCase):
 

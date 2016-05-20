@@ -5,6 +5,7 @@ from django.utils.six.moves.builtins import range
 import datetime
 from scheduler.settings import settings
 from scheduler.models import Event
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.dates import WEEKDAYS, WEEKDAYS_ABBR
 from django.utils.formats import date_format
@@ -83,7 +84,11 @@ class Period(object):
         pool = getattr(self, "occurrence_pool", None)
         if pool is not None:
             for occurrence in pool:
-                if occurrence.rule.pk in self.rules and occurrence.start <= self.utc_end and occurrence.end >= self.utc_start:
+                if occurrence.rule:
+                    test =  occurrence.rule.pk in self.rules
+                else:
+                    test = occurrence in self.events
+                if test and occurrence.start <= self.utc_end and occurrence.end >= self.utc_start:
                     occurrences.append(occurrence)
         else:
             # We only save DATETIME!
@@ -100,7 +105,8 @@ class Period(object):
                     continue
                 else:
                     sources.append(event.group_source)
-                event_occurrences = event.get_occurrences(start, end)
+            for source in sources:
+                event_occurrences = source.get_occurrences(start, end)
                 occurrences += event_occurrences
 
         return sorted(occurrences)
@@ -114,7 +120,9 @@ class Period(object):
 
     def get_persisted_occurrences(self):
         if not getattr(self, '_persisted_occurrences', None):
-            self._persisted_occurrences = Event.objects.filter(rule__in=self.rules)
+            events = Q(pk__in = self.events, rule=None) if None in self.rules else Q()
+            groups = Q(rule__in=self.rules)
+            self._persisted_occurrences = Event.objects.filter(groups | events)
         return self._persisted_occurrences
 
     @property

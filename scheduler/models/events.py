@@ -58,7 +58,7 @@ class EventManager(models.Manager):
         return self.exclude(cancelled=None)
 
     def source_events(self):
-        return self.filter(cancelled=None)
+        return self.filter(models.Q(cancelled=None) | models.Q(rule=None))
 
     def get_for_object(self, content_object, distinction=None):
         return EventRelation.objects.get_events_for_object(content_object, distinction, self)
@@ -101,7 +101,6 @@ class Event(BaseEvent):
     calendar = models.ForeignKey(Calendar, null=True, blank=True)
 
     def __init__(self, *args, **kwargs):
-        kwargs.setdefault('cancelled', False)
         if 'rule' in kwargs and not kwargs.get('cancelled', False) == None:
             defaults = dict([
                     (fld.name, kwargs[fld.name])
@@ -161,6 +160,10 @@ class Event(BaseEvent):
     def hours(self):
         return float(self.seconds) / 3600
 
+    @property
+    def moved(self):
+        return not (self.original_start == self.start and self.original_end == self.end)
+
     def move(self, new_start, new_end = None):
         #THIS IS NO YET WORKING!!!
         if False and type(new_start) == datetime.timedelta:
@@ -170,13 +173,23 @@ class Event(BaseEvent):
         self.start = new_start
         self.save()
 
+    def cancel(self):
+        if self.cancelled == None:
+            raise TypeError("source event can't be cancelled!")
+        self.cancelled = True
+        self.save()
+
+    def uncancel(self):
+        if self.cancelled:
+            self.cancelled = False
+            self.save()
+
     def _clone_model(self):
         new_kwargs = dict([(fld.name, getattr(self, fld.name)) for fld in self._meta.fields if fld.name != 'id'])
         return self.__class__(**new_kwargs)
 
     def get_occurrences(self, start, end):
-        import datetime
-        persisted_occurrences = self.event_group.filter(end__gte=start, start__lte=end)
+        persisted_occurrences = self.event_group.filter(models.Q(end__gte=start, start__lte=end) | models.Q(original_end__gte=start, original_start__lte=end))
         occ_replacer = OccurrenceReplacer(persisted_occurrences)
 
         occurrences = self._get_occurrence_list(start, end)
@@ -221,6 +234,7 @@ class Event(BaseEvent):
 
         ret.original_start = ret.start = start
         ret.original_end   = ret.end   = end
+        ret.cancelled = False
         return ret
 
     def get_rrule_object(self):
