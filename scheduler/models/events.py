@@ -94,7 +94,7 @@ class Event(BaseEvent):
     original_end = models.DateTimeField(blank=True, null=True, editable=False)
     start = models.DateTimeField()
     end = models.DateTimeField(help_text="The end time must be later than the start time.")
-    cancelled = models.BooleanField(null=True, blank=True, default=False)
+    cancelled = models.NullBooleanField(null=True, blank=True, default=False)
 
     rule = models.ForeignKey(Rule, null=True, blank=True)
 
