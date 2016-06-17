@@ -101,7 +101,7 @@ class Event(BaseEvent):
     calendar = models.ForeignKey(Calendar, null=True, blank=True)
 
     def __init__(self, *args, **kwargs):
-        if 'rule' in kwargs and not kwargs.get('cancelled', False) == None:
+        if kwargs.get('rule', None) and not kwargs.get('cancelled', False) == None:
             defaults = dict([
                     (fld.name, kwargs[fld.name])
                     for fld in self._meta.get_fields()
