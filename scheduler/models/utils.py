@@ -37,15 +37,15 @@ def get_model_bases():
 class OccurrenceReplacer(object):
 
     def __init__(self, persisted_occurrences):
-        lookup = [((occ.rule, occ.original_start, occ.original_end), occ) for occ in persisted_occurrences]
+        lookup = [((occ.original_start, occ.original_end, occ.rule), occ) for occ in persisted_occurrences]
         self.lookup = dict(lookup)
 
     def get_occurrence(self, occ):
-        return self.lookup.pop((occ.rule, occ.original_start, occ.original_end), occ)
+        return self.lookup.pop((occ.original_start, occ.original_end, occ.rule), occ)
 
     def has_occurrence(self, occ):
         try:
-            return (occ.rule, occ.original_start, occ.original_end) in self.lookup
+            return (occ.original_start, occ.original_end, occ.rule) in self.lookup
         except TypeError:
             if not self.lookup:
                 return False
@@ -54,3 +54,38 @@ class OccurrenceReplacer(object):
 
     def get_additional_occurrences(self, start, end):
         return [occ for occ in list(self.lookup.values()) if (occ.start < end and occ.end >= start and not occ.cancelled)]
+
+
+import operator
+class NextOccurrenceReplacer(object):
+
+    def __init__(self, persisted_occurrences):
+        self.lookup = [((occ.original_start, occ.original_end, occ.rule), occ) for occ in sorted(persisted_occurrences, key=operator.attrgetter("start"), reverse=True)]
+
+    def get_next_occurrences(self, occ):
+        if self.lookup and (occ.original_start, occ.original_end, occ.rule) == self.lookup[-1][0]:
+            return [self.lookup.pop()[1]]
+
+        ret = []
+        while self.lookup and self.lookup[-1][1].start <= occ.original_start:
+            ret.append(self.lookup.pop()[1])
+        return ret
+
+    def is_next_occurrence(self, occ):
+        if self.lookup and self.lookup[-1][0] == (occ.original_start, occ.original_end, occ.rule):
+            return True
+        return False
+
+    def get_additional_occurrences(self, start, end):
+        ret = []
+        for tup_occ in self.lookup:
+            occ = tup_occ[1]
+            if occ.start < start:
+                continue
+            elif occ.start > end:
+                break
+            ret.apppend(occ)
+        return ret
+
+    def remaining_occurrences(self):
+        return [tup_occ[1] for tup_occ in self.lookup]

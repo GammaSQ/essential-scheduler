@@ -13,7 +13,7 @@ from django.contrib.contenttypes import fields
 from django.contrib.contenttypes.models import ContentType
 
 from scheduler.settings import settings
-from scheduler.models.utils import OccurrenceReplacer, get_model_bases, SubclassingQuerySet
+from scheduler.models.utils import NextOccurrenceReplacer, OccurrenceReplacer, get_model_bases, SubclassingQuerySet
 from scheduler.models.rules import Rule
 from scheduler.models.calendars import Calendar
 
@@ -22,23 +22,43 @@ class EventListQuerySet(SubclassingQuerySet):
         if after is None:
             after = timezone.now()
         #NEED TO FILTER FOR SORCE-EVENT!
-        group_events = self.model.objects.filter(rule__in=self.values_list('rule', flat=True).distinct(), cancelled=None, original_start=None, original_end=None)
-        occ_replacer = OccurrenceReplacer(self.exclude(cancelled=None, original_start=None, original_end=None))
-        generators = [event_group._occurrences_after_generator(after) for event_group in group_events]
+        group_events = self.model.objects.filter(
+            rule__in=self.values_list('rule', flat=True).distinct(),
+            cancelled=None, original_start=None, original_end=None
+        ).exclude(
+            rule__end_recurring_period__lte=after
+        )
+        occ_replacer = NextOccurrenceReplacer(self.exclude(
+                cancelled=None, original_start=None, original_end=None
+        ))
+        source_events = self.filter(
+            rule=None, end__gt=after
+        )
+        #This is a little hacky:
+        #The second for is used ONLY as an assignment!
+        #(By using this expression, just one loop is required!)
+        occurrences = [
+            (next(generator), generator)
+            for event_group in group_events
+            # generator = event_group._occurrences_after_generator(after)
+            for generator in [
+                event_group._occurrences_after_generator(after)
+            ]
+        ]
         #Taking care of rule=None events.
-        generators += [event._occurrences_after_generator(after) for event in self.filter(rule=None)]
-        occurrences = []
-        for generator in generators:
-            try:
-                heapq.heappush(occurrences, (next(generator), generator))
-            except StopIteration:
-                pass
+        occurrences += [
+            (next(generator), generator)
+            for event in self.filter(rule=None)
+            # generator = event_group._occurrences_after_generator(after)
+            for generator in [
+                event._occurrences_after_generator(after)
+            ]
+        ]
+        heapq.heapify(occurrences)
 
         while True:
             if len(occurrences) == 0:
                 raise StopIteration
-
-            #HERE we could sort occurrences[x][0]. Is that necessarry / a good idea?
 
             generator = occurrences[0][1]
 
@@ -46,10 +66,22 @@ class EventListQuerySet(SubclassingQuerySet):
                 next_occurence = heapq.heapreplace(occurrences, (next(generator), generator))[0]
             except StopIteration:
                 next_occurence = heapq.heappop(occurrences)[0]
-            yield occ_replacer.get_occurrence(next_occurence)
+            for occ in occ_replacer.get_next_occurrences(next_occurence):
+                yield occ
 
 
+from datetime import datetime
 class EventManager(models.Manager):
+
+    def get(self, *args, slug=None, **kwargs):
+        if slug:
+            split_slug = slug.split('-',1)
+            if len(split_slug) > 1:
+                when = datetime.strptime(split_slug[1], '%Y-%m-%d-%H-%M%z')
+                return super(EventManager, self).get(pk=split_slug[0]).get_occurrence(when)
+            else:
+                super(EventManager, self).get(pk=split_slug[0])
+        return super(EventManager, self).get(*args, **kwargs)
 
     def get_queryset(self):
         return EventListQuerySet(self.model)
@@ -113,8 +145,13 @@ class Event(BaseEvent):
                 defaults=defaults)
             if created:
                 obj.save()
+                if not kwargs['rule'].start_recurring_period:
+                    kwargs['rule'].start_recurring_period = kwargs['start']
+                    kwargs['rule'].save()
                 kwargs.setdefault('original_start', kwargs['start'])
                 kwargs.setdefault('original_end'  , kwargs['end']  )
+            #else: we have rule duplication? other possibilities?
+            #Can we get here if we were initialized by database-rq?
 
             self.group_source = obj
         else:
@@ -242,13 +279,13 @@ class Event(BaseEvent):
             return None
         params = self.rule.get_params()
         frequency = self.rule.rrule_frequency()
-        return rrule.rrule(frequency, dtstart = self.start, **params)
+        return rrule.rrule(frequency, dtstart = self.rule.start_recurring_period, **params)
 
-    def get_occurrence(self, datetime, exact=False):
-        ret = next(self.occurrences_after(datetime))
+    def get_occurrence(self, start, exact=False):
+        ret = next(self.occurrences_after(start))
         if not exact:
             return ret
-        elif ret.start == datetime:
+        elif ret.start == start:
             return ret
 
     def occurrences_after(self, after=None):
@@ -256,7 +293,7 @@ class Event(BaseEvent):
             after = timezone.now()
         if settings.HIDE_NAIVE_AWARE_TYPE_ERROR and timezone.is_naive(after) and settings.USE_TZ:
             after = timezone.make_aware(after, timezone.utc)
-        occ_replacer = OccurrenceReplacer(self.event_group.all())
+        occ_replacer = OccurrenceReplacer(self.event_group.filter(original_start__gte = after))
 
         generator = self._occurrences_after_generator(after)
 
@@ -287,7 +324,7 @@ class Event(BaseEvent):
             raise StopIteration
 
         else:
-            date_iter = iter(rule)
+            date_iter = rule.xafter(after, inc=True)
             while True:
                 start = next(date_iter)
                 if self.rule.end_recurring_period and start > self.rule.end_recurring_period:
