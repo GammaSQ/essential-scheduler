@@ -132,39 +132,51 @@ class Event(BaseEvent):
 
     calendar = models.ForeignKey(Calendar, null=True, blank=True)
 
+    class Meta():
+        abstract=False
+
+    @property
+    def slug(self):
+        if not hasattr(self,'_slug'):
+            if self.pk==None and self.group_source.pk == None:
+                return None
+            pk = self.pk or self.group_source.pk
+            #beware never to set _slug to None!
+            self._slug = "%i-%s"%(pk, self.start.strftime('%Y-%m-%d-%H-%M%z'))
+        return self._slug
+
+    def save(self, *args, **kwargs):
+        reset_saved = False
+        if self.group_source == self:
+            reset_saved = True
+        elif not getattr(self.group_source, 'pk', None):
+            self.group_source.save()
+
+        super(Event, self).save(*args, **kwargs)
+        if reset_saved:
+            self.group_source = self
+
     def __init__(self, *args, **kwargs):
         if kwargs.get('rule', None) and not kwargs.get('cancelled', False) == None:
-            defaults = dict([
-                    (fld.name, kwargs[fld.name])
-                    for fld in self._meta.get_fields()
-                    if fld.name in kwargs
-                    and not fld.auto_created and not fld.is_relation
-                    and fld.name not in ['original_start', 'original_end', 'cancelled']
-                ])
-            obj, created = type(self).objects.get_or_create(rule=kwargs['rule'], cancelled=None,
-                defaults=defaults)
-            if created:
-                obj.save()
+            kwargs['cancelled'] = None
+            try:
+                type(self).objects.get(rule=kwargs['rule'], cancelled=None)
+            except type(self).DoesNotExist:
                 if not kwargs['rule'].start_recurring_period:
                     kwargs['rule'].start_recurring_period = kwargs['start']
                     kwargs['rule'].save()
                 kwargs.setdefault('original_start', kwargs['start'])
                 kwargs.setdefault('original_end'  , kwargs['end']  )
-            #else: we have rule duplication? other possibilities?
-            #Can we get here if we were initialized by database-rq?
 
-            self.group_source = obj
-        else:
-            self.group_source = self
+        self.group_source = self
 
         super(Event, self).__init__(*args, **kwargs)
         if self.rule:
             self.event_group = type(self).objects.filter(rule=self.rule).exclude(cancelled=None)
         else:
+            #this may blow up in our face!
+            #need to save before pk exists.
             self.event_group = type(self).objects.filter(pk = self.pk)
-
-    class Meta():
-        abstract=False
 
     def __str__(self):
         #date_format default format is 'DATE_FORMAT'

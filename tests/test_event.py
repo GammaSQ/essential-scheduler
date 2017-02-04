@@ -357,7 +357,35 @@ class TestEvent(TestCase):
 
         occurrence2 = Event.objects.get(slug="%i-%s"%(event.pk, datetime.datetime(2008, 1, 13, 8, 0, tzinfo=timezone.utc).strftime('%Y-%m-%d-%H-%M%z')))
         self.assertEqual(occurrence2.start, datetime.datetime(2008, 1, 19, 8, tzinfo=timezone.utc))
-        
+
+    def test_simple_event_slug_value(self):
+        cal = Calendar(name="MyCal")
+        cal.save()
+        event = self.__create_event(
+                datetime.datetime(2008, 1, 5, 8, 0, tzinfo=timezone.utc),
+                datetime.datetime(2008, 1, 5, 9, 0, tzinfo=timezone.utc),
+                cal,
+            )
+        self.assertEqual(event.slug, None)
+        event.save()
+        self.assertEqual(event.pk, 1)
+        self.assertEqual(event.slug, '1-2008-01-05-08-00+0000')
+
+    def test_recurring_event_slug_value(self):
+        cal = Calendar(name="MyCal")
+        cal.save()
+        rule = Rule(frequency="WEEKLY", end_recurring_period=datetime.datetime(2008, 5, 5, 0, 0, tzinfo=timezone.utc))
+        rule.save()
+
+        event = self.__create_recurring_event(
+                datetime.datetime(2008, 1, 5, 8, 0, tzinfo=timezone.utc),
+                datetime.datetime(2008, 1, 5, 9, 0, tzinfo=timezone.utc),
+                rule,
+                cal,
+            )
+        self.assertEqual(event.slug, None)
+        event.save()
+        self.assertEqual(event.slug, '1-2008-01-05-08-00+0000')
 
 class TestEventInheritance(TestEvent):
 
