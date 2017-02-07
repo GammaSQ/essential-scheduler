@@ -17,13 +17,15 @@ from scheduler.models.utils import NextOccurrenceReplacer, OccurrenceReplacer, g
 from scheduler.models.rules import Rule
 from scheduler.models.calendars import Calendar
 
+SLUG_DATE_FORMAT='%Y-%m-%d-%H-%M%z'
+
 class EventListQuerySet(SubclassingQuerySet):
 
     def _resolve_slug(self, slug):
         split_slug = slug.split('-',1)
         when = None
         if len(split_slug) > 1:
-            when = datetime.strptime(split_slug[1], '%Y-%m-%d-%H-%M%z')
+            when = datetime.strptime(split_slug[1], SLUG_DATE_FORMAT)
         return split_slug[0], when
 
     def get(self, *args, slug=None, **kwargs):
@@ -169,7 +171,7 @@ class Event(BaseEvent):
                 return None
             pk = self.pk or self.group_source.pk
             #beware never to set _slug to None!
-            self._slug = "%i-%s"%(pk, self.start.strftime('%Y-%m-%d-%H-%M%z'))
+            self._slug = "%i-%s"%(pk, self.start.strftime(SLUG_DATE_FORMAT))
         return self._slug
 
     def save(self, *args, **kwargs):
