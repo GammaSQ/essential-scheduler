@@ -18,6 +18,44 @@ from scheduler.models.rules import Rule
 from scheduler.models.calendars import Calendar
 
 class EventListQuerySet(SubclassingQuerySet):
+
+    def _resolve_slug(self, slug):
+        split_slug = slug.split('-',1)
+        when = None
+        if len(split_slug) > 1:
+            when = datetime.strptime(split_slug[1], '%Y-%m-%d-%H-%M%z')
+        return split_slug[0], when
+
+    def get(self, *args, slug=None, **kwargs):
+        if slug:
+            pk, when = self._resolve_slug(slug)
+            ret = super(EventListQuerySet, self).get(pk=pk)
+            if when:
+                return ret.get_occurrence(when)
+            else:
+                return ret
+        return super(EventListQuerySet, self).get(*args, **kwargs)
+
+    def filter(self, *args, slug=None, **kwargs):
+        if slug:
+            if "-" in slug:
+                occ = self.get(slug=slug)
+                if occ:
+                    return [occ]
+                else:
+                    return super(EventListQuerySet, self).none()
+            else:
+                kwargs['pk'] = slug
+        return super(EventListQuerySet, self).filter(*args, **kwargs)
+
+    def exclude(self, *args, slug=None, **kwargs):
+        if slug:
+            pk, when = self._resolve_slug(slug)
+            kwargs.setdefault('pk', pk)
+            if when:
+                kwargs.setdefault('start', when)
+        return super(EventListQuerySet, self).exclude(*args, **kwargs)
+
     def occurrences_after(self, after=None, tzinfo=timezone.utc):
         if after is None:
             after = timezone.now()
@@ -69,19 +107,8 @@ class EventListQuerySet(SubclassingQuerySet):
             for occ in occ_replacer.get_next_occurrences(next_occurence):
                 yield occ
 
-
 from datetime import datetime
 class EventManager(models.Manager):
-
-    def get(self, *args, slug=None, **kwargs):
-        if slug:
-            split_slug = slug.split('-',1)
-            if len(split_slug) > 1:
-                when = datetime.strptime(split_slug[1], '%Y-%m-%d-%H-%M%z')
-                return super(EventManager, self).get(pk=split_slug[0]).get_occurrence(when)
-            else:
-                super(EventManager, self).get(pk=split_slug[0])
-        return super(EventManager, self).get(*args, **kwargs)
 
     def get_queryset(self):
         return EventListQuerySet(self.model)
