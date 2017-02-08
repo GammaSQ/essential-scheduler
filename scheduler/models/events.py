@@ -18,6 +18,8 @@ from scheduler.models.rules import Rule
 from scheduler.models.calendars import Calendar
 
 SLUG_DATE_FORMAT='%Y-%m-%d-%H-%M%z'
+if not settings.USE_TZ:
+    SLUG_DATE_FORMAT='%Y-%m-%d-%H-%M'
 
 class EventListQuerySet(SubclassingQuerySet):
 
@@ -28,26 +30,39 @@ class EventListQuerySet(SubclassingQuerySet):
             when = datetime.strptime(split_slug[1], SLUG_DATE_FORMAT)
         return split_slug[0], when
 
+    def _deliver_slug(self, slug):
+        pk, when = self._resolve_slug(slug)
+        if self.query.high_mark \
+            and self.query.high_mark-self.query.low_mark <= 1:
+            self.query.clear_limits()
+        event = next(iter(self.filter(pk=pk)))
+        if when:
+            return event.get_occurrence(when)
+        return event
+
+    #Need to override private method _clone, in order to
+    #keep track of slug!
+    def _clone(self):
+        clone = super(EventListQuerySet, self)._clone()
+        if hasattr(self, 'slug'):
+            clone.slug = self.slug
+        return clone
+
+    def iterator(self):
+        if hasattr(self,'slug'):
+            slug = self.slug
+            del self.slug
+            return [self._deliver_slug(slug)]
+        return super(EventListQuerySet, self).iterator()
+
     def get(self, *args, slug=None, **kwargs):
         if slug:
-            pk, when = self._resolve_slug(slug)
-            ret = super(EventListQuerySet, self).get(pk=pk)
-            if when:
-                return ret.get_occurrence(when)
-            else:
-                return ret
+            return self._deliver_slug(slug)
         return super(EventListQuerySet, self).get(*args, **kwargs)
 
     def filter(self, *args, slug=None, **kwargs):
         if slug:
-            if "-" in slug:
-                occ = self.get(slug=slug)
-                if occ:
-                    return [occ]
-                else:
-                    return super(EventListQuerySet, self).none()
-            else:
-                kwargs['pk'] = slug
+            self.slug=slug
         return super(EventListQuerySet, self).filter(*args, **kwargs)
 
     def exclude(self, *args, slug=None, **kwargs):

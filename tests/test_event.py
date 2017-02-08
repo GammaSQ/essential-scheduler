@@ -359,6 +359,8 @@ class TestEvent(TestCase):
         self.assertEqual(occurrence2.start, datetime.datetime(2008, 1, 19, 8, tzinfo=timezone.utc))
 
         filtered1 = Event.objects.filter(slug="%i-%s"%(event.pk, datetime.datetime(2008, 1, 12, 8, 0, tzinfo=timezone.utc).strftime('%Y-%m-%d-%H-%M%z')))
+        #can we avoid inifinite recursion?
+        filtered1._fetch_all()
         self.assertEqual(filtered1[0].start, datetime.datetime(2008, 1, 12, 8, tzinfo=timezone.utc))
 
         filtered2 = Event.objects.filter(slug="%i-%s"%(event.pk, datetime.datetime(2008, 1, 13, 8, 0, tzinfo=timezone.utc).strftime('%Y-%m-%d-%H-%M%z')))
